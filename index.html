@@ -1,962 +1,5 @@
-</div>
-            </div>
-        </div>
-    </div>
+<!DOCTYPE html>
 
-    <!-- Icon Picker Modal -->
-    <div id="iconPickerModal" class="modal">
-        <div class="modal-content" style="max-width: 500px; margin: 50px auto; border-radius: 20px;">
-            <div class="modal-header">
-                <button onclick="closeIconPicker()">Annuler</button>
-                <h2>Choisir une icône</h2>
-                <button onclick="selectIcon()">OK</button>
-            </div>
-            <div class="icon-grid" id="iconGrid"></div>
-        </div>
-    </div>
-
-    <!-- Category Selector Modal -->
-    <div id="categorySelectorModal" class="modal">
-        <div class="modal-content" style="max-width: 500px; margin: 50px auto; border-radius: 20px;">
-            <div class="modal-header">
-                <button onclick="closeCategorySelector()">Annuler</button>
-                <h2>Choisir une catégorie</h2>
-                <button onclick="closeCategorySelector()">OK</button>
-            </div>
-            <div style="padding: 20px;">
-                <div id="categoryList"></div>
-                <div class="add-field-btn" onclick="createNewCategory()">
-                    + Nouvelle catégorie
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Field Menu Modal -->
-    <div id="fieldMenuModal" class="modal">
-        <div class="modal-content" style="max-width: 400px; margin: 50px auto; border-radius: 20px;">
-            <div class="modal-header">
-                <button onclick="closeFieldMenu()">Annuler</button>
-                <h2>Ajouter un champ</h2>
-                <button onclick="closeFieldMenu()">OK</button>
-            </div>
-            <div style="padding: 20px;">
-                <div class="dropdown-item" onclick="addField('username')">👤 Nom d'utilisateur</div>
-                <div class="dropdown-item" onclick="addField('password')">🔑 Mot de passe</div>
-                <div class="dropdown-item" onclick="addField('email')">📧 Email</div>
-                <div class="dropdown-item" onclick="addField('url')">🌐 Site web</div>
-                <div class="dropdown-item" onclick="addField('note')">📝 Note</div>
-                <div class="dropdown-item" onclick="addField('phone')">📱 Téléphone</div>
-                <div class="dropdown-item" onclick="addField('address')">📍 Adresse</div>
-                <div class="dropdown-item" onclick="addField('custom')">➕ Champ personnalisé</div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Navigation Bar -->
-    <div class="nav-bar">
-        <div class="nav-item active" onclick="switchScreen('mainScreen', this)">
-            <div>📊</div>
-            <small>Données</small>
-        </div>
-        <div class="nav-item" onclick="showToast('Fonction OTP disponible dans la version PRO')">
-            <div>🔑</div>
-            <small>OTP</small>
-        </div>
-        <div class="nav-item" onclick="switchScreen('settingsScreen', this)">
-            <div>⚙️</div>
-            <small>Paramètres</small>
-        </div>
-    </div>
-
-    <!-- Toast Notification -->
-    <div id="toast" class="toast"></div>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
-    <script>
-        // Data storage
-        let masterKey = '';
-        let isLocked = true;
-        let database = {
-            entries: [],
-            categories: {
-                'app store': { color: '#ffeb3b', icon: '📱' },
-                'assurance': { color: '#607d8b', icon: '🛡️' },
-                'banque': { color: '#f44336', icon: '🏦' },
-                'email': { color: '#9c27b0', icon: '📧' },
-                'jeux': { color: '#2196f3', icon: '🎮' },
-                'shopping': { color: '#ff9800', icon: '🛒' },
-                'gouvernement': { color: '#607d8b', icon: '🏛️' },
-                'santé': { color: '#4caf50', icon: '🏥' },
-                'film': { color: '#e91e63', icon: '🎬' },
-                'musique': { color: '#795548', icon: '🎵' }
-            },
-            settings: {
-                autolock: true,
-                biometric: false,
-                lockTimeout: 60000 // 1 minute
-            }
-        };
-        let currentCategory = null;
-        let currentEntry = null;
-        let editMode = false;
-        let selectedIconTemp = '🔒';
-        let selectedCategoryTemp = null;
-        let customFieldsTemp = [];
-        let lockTimer = null;
-
-        // Icon list
-        const icons = ['🔒', '🔑', '🛡️', '🏦', '📧', '🌐', '💳', '📱', '💻', '🎮', 
-                      '🛒', '🏥', '✈️', '🚗', '🏠', '📚', '🎬', '🎵', '🍔', '☕',
-                      '⚡', '💰', '📦', '🎯', '🔐', '🗝️', '🔓', '🔏', '📍', '📎'];
-
-        // Initialize
-        function init() {
-            updateTime();
-            setInterval(updateTime, 60000);
-            loadDatabase();
-            setupAutoLock();
-            
-            // Add event listeners for auto-lock
-            document.addEventListener('visibilitychange', handleVisibilityChange);
-            document.addEventListener('blur', startLockTimer);
-            document.addEventListener('focus', stopLockTimer);
-            
-            // Prevent right-click for security
-            document.addEventListener('contextmenu', e => e.preventDefault());
-        }
-
-        function updateTime() {
-            const now = new Date();
-            document.getElementById('time').textContent = 
-                now.getHours().toString().padStart(2, '0') + ':' + 
-                now.getMinutes().toString().padStart(2, '0');
-        }
-
-        function setupAutoLock() {
-            if (database.settings.autolock) {
-                startLockTimer();
-            }
-        }
-
-        function handleVisibilityChange() {
-            if (document.hidden && database.settings.autolock) {
-                lockApp();
-            }
-        }
-
-        function startLockTimer() {
-            if (!database.settings.autolock || isLocked) return;
-            
-            stopLockTimer();
-            lockTimer = setTimeout(() => {
-                lockApp();
-            }, database.settings.lockTimeout);
-        }
-
-        function stopLockTimer() {
-            if (lockTimer) {
-                clearTimeout(lockTimer);
-                lockTimer = null;
-            }
-        }
-
-        function lockApp() {
-            if (isLocked) return;
-            
-            isLocked = true;
-            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-            document.getElementById('loginScreen').classList.add('active');
-            document.getElementById('masterPassword').value = '';
-            document.getElementById('masterPassword').focus();
-            showToast('Application verrouillée');
-        }
-
-        function loadDatabase() {
-            const stored = localStorage.getItem('passwordSafeDB');
-            if (stored) {
-                try {
-                    const decrypted = localStorage.getItem('passwordSafeMaster');
-                    if (decrypted) {
-                        database = JSON.parse(stored);
-                    }
-                } catch(e) {
-                    console.error('Error loading database:', e);
-                }
-            }
-        }
-
-        function saveDatabase() {
-            localStorage.setItem('passwordSafeDB', JSON.stringify(database));
-            localStorage.setItem('passwordSafeMaster', 'true');
-        }
-
-        function login() {
-            const password = document.getElementById('masterPassword').value;
-            if (!password) {
-                showToast('Veuillez entrer un mot de passe');
-                return;
-            }
-            
-            // Store master key for encryption
-            masterKey = password;
-            isLocked = false;
-            
-            // Switch to main screen
-            document.getElementById('loginScreen').classList.remove('active');
-            document.getElementById('mainScreen').classList.add('active');
-            
-            // Clear password field
-            document.getElementById('masterPassword').value = '';
-            
-            // Load categories
-            loadCategories();
-            
-            // Start auto-lock timer
-            startLockTimer();
-            
-            showToast('Connexion réussie');
-        }
-
-        function loadCategories() {
-            const grid = document.getElementById('categoriesGrid');
-            grid.innerHTML = '';
-            
-            // Add "All entries" card
-            const allCard = createCategoryCard('Toutes les catégories', database.entries.length, '#607d8b');
-            allCard.onclick = () => showAllEntries();
-            grid.appendChild(allCard);
-            
-            // Add "No category" card
-            const uncategorized = database.entries.filter(e => !e.category).length;
-            if (uncategorized > 0) {
-                const noCard = createCategoryCard('Sans catégorie', uncategorized, '#444');
-                noCard.onclick = () => showUncategorized();
-                grid.appendChild(noCard);
-            }
-            
-            // Add category cards
-            for (const [name, category] of Object.entries(database.categories)) {
-                const count = database.entries.filter(e => e.category === name).length;
-                const card = createCategoryCard(name, count, category.color);
-                card.onclick = () => showCategory(name);
-                grid.appendChild(card);
-            }
-        }
-
-        function createCategoryCard(name, count, color) {
-            const card = document.createElement('div');
-            card.className = 'category-card';
-            card.style.background = color;
-            card.innerHTML = `
-                <div class="category-name">${name.charAt(0).toUpperCase() + name.slice(1)}</div>
-                <div class="category-count">${count} entrée${count !== 1 ? 's' : ''}</div>
-            `;
-            return card;
-        }
-
-        function showCategory(categoryName) {
-            currentCategory = categoryName;
-            document.getElementById('categoryTitle').textContent = categoryName.charAt(0).toUpperCase() + categoryName.slice(1);
-            
-            const entries = database.entries.filter(e => e.category === categoryName);
-            displayEntries(entries);
-            
-            document.getElementById('mainScreen').classList.remove('active');
-            document.getElementById('categoryView').classList.add('active');
-        }
-
-        function showAllEntries() {
-            currentCategory = null;
-            document.getElementById('categoryTitle').textContent = 'Toutes les entrées';
-            displayEntries(database.entries);
-            
-            document.getElementById('mainScreen').classList.remove('active');
-            document.getElementById('categoryView').classList.add('active');
-        }
-
-        function showUncategorized() {
-            currentCategory = '';
-            document.getElementById('categoryTitle').textContent = 'Sans catégorie';
-            displayEntries(database.entries.filter(e => !e.category));
-            
-            document.getElementById('mainScreen').classList.remove('active');
-            document.getElementById('categoryView').classList.add('active');
-        }
-
-        function displayEntries(entries) {
-            const list = document.getElementById('entriesList');
-            list.innerHTML = '';
-            
-            // Sort entries alphabetically
-            entries.sort((a, b) => a.title.localeCompare(b.title));
-            
-            // Group by first letter
-            const grouped = {};
-            entries.forEach(entry => {
-                const firstLetter = entry.title[0].toUpperCase();
-                if (!grouped[firstLetter]) grouped[firstLetter] = [];
-                grouped[firstLetter].push(entry);
-            });
-            
-            // Display grouped entries
-            Object.keys(grouped).sort().forEach(letter => {
-                const letterHeader = document.createElement('div');
-                letterHeader.style.color = '#666';
-                letterHeader.style.fontSize = '14px';
-                letterHeader.style.marginTop = '20px';
-                letterHeader.style.marginBottom = '10px';
-                letterHeader.textContent = letter;
-                list.appendChild(letterHeader);
-                
-                grouped[letter].forEach(entry => {
-                    const item = document.createElement('div');
-                    item.className = 'entry-item';
-                    const icon = entry.icon || database.categories[entry.category]?.icon || '🔒';
-                    const username = entry.fields?.find(f => f.type === 'username')?.value || '';
-                    
-                    item.innerHTML = `
-                        <div class="entry-icon" style="background: ${database.categories[entry.category]?.color || '#333'}">
-                            ${icon}
-                        </div>
-                        <div class="entry-info">
-                            <div class="entry-title">${entry.title}</div>
-                            <div class="entry-username">${username}</div>
-                        </div>
-                        <div class="entry-actions">
-                            <span>›</span>
-                        </div>
-                    `;
-                    item.onclick = () => showEntryDetail(entry);
-                    list.appendChild(item);
-                });
-            });
-        }
-
-        function showEntryDetail(entry) {
-            currentEntry = entry;
-            document.getElementById('entryTitle').textContent = entry.title;
-            
-            const icon = entry.icon || database.categories[entry.category]?.icon || '🔒';
-            const color = database.categories[entry.category]?.color || '#333';
-            document.getElementById('entryIcon').innerHTML = icon;
-            document.getElementById('entryIcon').style.background = color;
-            
-            const fieldsContainer = document.getElementById('detailFields');
-            fieldsContainer.innerHTML = '';
-            
-            // Show category
-            if (entry.category) {
-                fieldsContainer.innerHTML += `
-                    <div class="section-title">CATÉGORIE</div>
-                    <div class="field-item">
-                        <div class="field-info">
-                            <div class="field-value">${entry.category}</div>
-                        </div>
-                    </div>
-                `;
-            }
-            
-            // Show fields
-            if (entry.fields && entry.fields.length > 0) {
-                fieldsContainer.innerHTML += '<div class="section-title">DONNÉES</div>';
-                
-                entry.fields.forEach(field => {
-                    const isPassword = field.type === 'password';
-                    const fieldId = 'field_' + Math.random().toString(36).substr(2, 9);
-                    
-                    fieldsContainer.innerHTML += `
-                        <div class="field-item">
-                            <div class="field-info">
-                                <div class="field-label">${getFieldLabel(field.type, field.label)}</div>
-                                <div class="field-value">
-                                    ${isPassword ? 
-                                        `<input type="password" id="${fieldId}" value="${decrypt(field.value)}" readonly style="background: none; border: none; color: #fff; padding: 0;">` : 
-                                        field.value}
-                                </div>
-                            </div>
-                            <div class="field-actions">
-                                ${isPassword ? `<button class="action-btn" onclick="togglePassword('${fieldId}')">👁</button>` : ''}
-                                <button class="action-btn" onclick="copyFieldValue('${isPassword ? decrypt(field.value) : field.value}')">📋</button>
-                            </div>
-                        </div>
-                    `;
-                });
-            }
-            
-            // Show comments if any
-            if (entry.comments) {
-                fieldsContainer.innerHTML += `
-                    <div class="section-title">COMMENTAIRES</div>
-                    <div class="field-item">
-                        <div class="field-info">
-                            <div class="field-value">${entry.comments}</div>
-                        </div>
-                    </div>
-                `;
-            }
-            
-            // Show last modified
-            if (entry.lastModified) {
-                const date = new Date(entry.lastModified);
-                fieldsContainer.innerHTML += `
-                    <div style="color: #666; font-size: 12px; text-align: center; margin-top: 20px;">
-                        Dernière mis à jour ${date.toLocaleDateString('fr-FR')} à ${date.toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'})}
-                    </div>
-                `;
-            }
-            
-            document.getElementById('categoryView').classList.remove('active');
-            document.getElementById('entryDetail').classList.add('active');
-        }
-
-        function getFieldLabel(type, customLabel) {
-            if (customLabel) return customLabel;
-            
-            const labels = {
-                'username': "Nom d'utilisateur",
-                'password': 'Mot de passe',
-                'email': 'Email',
-                'url': 'Site web',
-                'phone': 'Téléphone',
-                'address': 'Adresse',
-                'note': 'Note'
-            };
-            
-            return labels[type] || 'Champ personnalisé';
-        }
-
-        function backToMain() {
-            document.getElementById('categoryView').classList.remove('active');
-            document.getElementById('mainScreen').classList.add('active');
-            startLockTimer();
-        }
-
-        function backToCategory() {
-            document.getElementById('entryDetail').classList.remove('active');
-            if (currentCategory !== null) {
-                if (currentCategory === '') {
-                    showUncategorized();
-                } else {
-                    showCategory(currentCategory);
-                }
-            } else {
-                showAllEntries();
-            }
-            startLockTimer();
-        }
-
-        function openAddModal() {
-            editMode = false;
-            document.getElementById('modalTitle').textContent = 'Nouvelle entrée';
-            clearModalFields();
-            customFieldsTemp = [
-                { type: 'username', value: '', label: '' },
-                { type: 'password', value: '', label: '' }
-            ];
-            updateFieldsDisplay();
-            document.getElementById('addModal').classList.add('active');
-            stopLockTimer();
-        }
-
-        function editEntry() {
-            editMode = true;
-            document.getElementById('modalTitle').textContent = "Modifier l'entrée";
-            
-            // Fill modal with current entry data
-            document.getElementById('newTitle').value = currentEntry.title;
-            selectedIconTemp = currentEntry.icon || database.categories[currentEntry.category]?.icon || '🔒';
-            document.getElementById('selectedIcon').textContent = selectedIconTemp;
-            
-            selectedCategoryTemp = currentEntry.category;
-            if (selectedCategoryTemp) {
-                document.getElementById('selectedCategoryDisplay').style.display = 'block';
-                document.getElementById('selectedCategoryName').textContent = selectedCategoryTemp;
-                document.getElementById('selectedCategoryColor').style.background = database.categories[selectedCategoryTemp]?.color || '#607d8b';
-                document.getElementById('selectedCategoryText').style.display = 'none';
-            }
-            
-            customFieldsTemp = currentEntry.fields ? [...currentEntry.fields] : [];
-            updateFieldsDisplay();
-            
-            document.getElementById('addModal').classList.add('active');
-            stopLockTimer();
-        }
-
-        function clearModalFields() {
-            document.getElementById('newTitle').value = '';
-            selectedIconTemp = '🔒';
-            document.getElementById('selectedIcon').textContent = '🔒';
-            selectedCategoryTemp = null;
-            document.getElementById('selectedCategoryDisplay').style.display = 'none';
-            document.getElementById('selectedCategoryText').style.display = 'block';
-            document.getElementById('selectedCategoryText').textContent = 'Ajouter une catégorie';
-            customFieldsTemp = [];
-        }
-
-        function closeModal() {
-            document.getElementById('addModal').classList.remove('active');
-            clearModalFields();
-            startLockTimer();
-        }
-
-        function saveEntry() {
-            const title = document.getElementById('newTitle').value;
-            
-            if (!title) {
-                showToast('Veuillez entrer un nom');
-                return;
-            }
-            
-            // Validate fields
-            const validFields = customFieldsTemp.filter(f => f.value);
-            
-            if (validFields.length === 0) {
-                showToast('Veuillez ajouter au moins un champ');
-                return;
-            }
-            
-            // Encrypt password fields
-            const encryptedFields = validFields.map(f => ({
-                ...f,
-                value: f.type === 'password' ? encrypt(f.value) : f.value
-            }));
-            
-            const entry = {
-                id: editMode ? currentEntry.id : Date.now(),
-                title,
-                category: selectedCategoryTemp,
-                icon: selectedIconTemp,
-                fields: encryptedFields,
-                lastModified: new Date().toISOString()
-            };
-            
-            if (editMode) {
-                // Update existing entry
-                const index = database.entries.findIndex(e => e.id === currentEntry.id);
-                if (index !== -1) {
-                    database.entries[index] = entry;
-                }
-            } else {
-                // Add new entry
-                database.entries.push(entry);
-            }
-            
-            saveDatabase();
-            closeModal();
-            loadCategories();
-            
-            if (editMode) {
-                showEntryDetail(entry);
-            }
-            
-            showToast(editMode ? 'Entrée modifiée' : 'Entrée ajoutée');
-        }
-
-        function deleteEntry() {
-            if (confirm('Êtes-vous sûr de vouloir supprimer cette entrée?')) {
-                database.entries = database.entries.filter(e => e.id !== currentEntry.id);
-                saveDatabase();
-                backToCategory();
-                loadCategories();
-                showToast('Entrée supprimée');
-            }
-        }
-
-        function updateFieldsDisplay() {
-            const container = document.getElementById('customFields');
-            container.innerHTML = '';
-            
-            customFieldsTemp.forEach((field, index) => {
-                const fieldId = 'field_edit_' + index;
-                const isPassword = field.type === 'password';
-                
-                container.innerHTML += `
-                    <div class="field-item" style="margin-bottom: 10px;">
-                        <div style="flex: 1;">
-                            <div class="field-label">${getFieldLabel(field.type, field.label)}</div>
-                            <input type="${isPassword ? 'password' : 'text'}" 
-                                   id="${fieldId}"
-                                   value="${isPassword && field.value ? decrypt(field.value) : field.value}"
-                                   placeholder="Entrer ${getFieldLabel(field.type, field.label).toLowerCase()}"
-                                   onchange="updateFieldValue(${index}, this.value)"
-                                   style="background: #1a1a1a; border: 1px solid #333; padding: 10px; border-radius: 8px; width: 100%; margin-top: 5px;">
-                        </div>
-                        <div class="field-actions">
-                            ${isPassword ? `<button class="action-btn" onclick="togglePassword('${fieldId}')">👁</button>` : ''}
-                            ${isPassword ? `<button class="action-btn" onclick="generatePasswordForField(${index})">🔄</button>` : ''}
-                            <button class="action-btn" onclick="removeField(${index})">🗑️</button>
-                        </div>
-                    </div>
-                `;
-            });
-        }
-
-        function updateFieldValue(index, value) {
-            customFieldsTemp[index].value = value;
-        }
-
-        function removeField(index) {
-            customFieldsTemp.splice(index, 1);
-            updateFieldsDisplay();
-        }
-
-        function showAddFieldMenu() {
-            document.getElementById('fieldMenuModal').classList.add('active');
-        }
-
-        function closeFieldMenu() {
-            document.getElementById('fieldMenuModal').classList.remove('active');
-        }
-
-        function addField(type) {
-            if (type === 'custom') {
-                const label = prompt('Nom du champ personnalisé:');
-                if (label) {
-                    customFieldsTemp.push({ type: 'text', value: '', label });
-                }
-            } else {
-                customFieldsTemp.push({ type, value: '', label: '' });
-            }
-            updateFieldsDisplay();
-            closeFieldMenu();
-        }
-
-        function openIconPicker() {
-            const grid = document.getElementById('iconGrid');
-            grid.innerHTML = '';
-            
-            icons.forEach(icon => {
-                const option = document.createElement('div');
-                option.className = 'icon-option';
-                if (icon === selectedIconTemp) option.classList.add('selected');
-                option.textContent = icon;
-                option.onclick = () => {
-                    document.querySelectorAll('.icon-option').forEach(o => o.classList.remove('selected'));
-                    option.classList.add('selected');
-                    selectedIconTemp = icon;
-                };
-                grid.appendChild(option);
-            });
-            
-            document.getElementById('iconPickerModal').classList.add('active');
-        }
-
-        function closeIconPicker() {
-            document.getElementById('iconPickerModal').classList.remove('active');
-        }
-
-        function selectIcon() {
-            document.getElementById('selectedIcon').textContent = selectedIconTemp;
-            closeIconPicker();
-        }
-
-        function showCategorySelector() {
-            const list = document.getElementById('categoryList');
-            list.innerHTML = '';
-            
-            Object.entries(database.categories).forEach(([name, cat]) => {
-                const item = document.createElement('div');
-                item.className = 'category-selector';
-                item.style.marginBottom = '10px';
-                item.innerHTML = `
-                    <div class="category-color" style="background: ${cat.color}"></div>
-                    <div style="flex: 1;">${name.charAt(0).toUpperCase() + name.slice(1)}</div>
-                `;
-                item.onclick = () => {
-                    selectedCategoryTemp = name;
-                    document.getElementById('selectedCategoryDisplay').style.display = 'block';
-                    document.getElementById('selectedCategoryName').textContent = name;
-                    document.getElementById('selectedCategoryColor').style.background = cat.color;
-                    document.getElementById('selectedCategoryText').style.display = 'none';
-                    closeCategorySelector();
-                };
-                list.appendChild(item);
-            });
-            
-            document.getElementById('categorySelectorModal').classList.add('active');
-        }
-
-        function closeCategorySelector() {
-            document.getElementById('categorySelectorModal').classList.remove('active');
-        }
-
-        function removeCategory() {
-            selectedCategoryTemp = null;
-            document.getElementById('selectedCategoryDisplay').style.display = 'none';
-            document.getElementById('selectedCategoryText').style.display = 'block';
-            document.getElementById('selectedCategoryText').textContent = 'Ajouter une catégorie';
-        }
-
-        function createNewCategory() {
-            const name = prompt('Nom de la nouvelle catégorie:');
-            if (name && !database.categories[name.toLowerCase()]) {
-                const colors = ['#f44336', '#e91e63', '#9c27b0', '#673ab7', '#3f51b5', 
-                              '#2196f3', '#03a9f4', '#00bcd4', '#009688', '#4caf50'];
-                const color = colors[Math.floor(Math.random() * colors.length)];
-                database.categories[name.toLowerCase()] = { color, icon: '📁' };
-                saveDatabase();
-                showCategorySelector();
-            }
-        }
-
-        function generatePassword() {
-            const length = 16;
-            const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=[]{}|;:,.<>?';
-            let password = '';
-            for (let i = 0; i < length; i++) {
-                password += charset.charAt(Math.floor(Math.random() * charset.length));
-            }
-            return password;
-        }
-
-        function generatePasswordForField(index) {
-            const password = generatePassword();
-            customFieldsTemp[index].value = password;
-            updateFieldsDisplay();
-            showToast('Mot de passe généré');
-        }
-
-        function togglePassword(inputId) {
-            const input = document.getElementById(inputId);
-            if (input) {
-                input.type = input.type === 'password' ? 'text' : 'password';
-            }
-        }
-
-        function copyFieldValue(value) {
-            const textarea = document.createElement('textarea');
-            textarea.value = value;
-            textarea.style.position = 'fixed';
-            textarea.style.opacity = '0';
-            document.body.appendChild(textarea);
-            textarea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textarea);
-            showToast('Copié dans le presse-papiers');
-        }
-
-        function searchEntries() {
-            const query = document.getElementById('searchInput').value.toLowerCase();
-            if (!query) {
-                loadCategories();
-                return;
-            }
-            
-            const filtered = database.entries.filter(e => 
-                e.title.toLowerCase().includes(query) ||
-                e.category?.toLowerCase().includes(query) ||
-                e.fields?.some(f => f.value.toLowerCase().includes(query))
-            );
-            
-            displayFilteredCategories(filtered);
-        }
-
-        function searchCategoryEntries() {
-            const query = document.getElementById('categorySearchInput').value.toLowerCase();
-            let entries = currentCategory !== null ? 
-                (currentCategory === '' ? database.entries.filter(e => !e.category) :
-                 database.entries.filter(e => e.category === currentCategory)) :
-                database.entries;
-            
-            if (query) {
-                entries = entries.filter(e => 
-                    e.title.toLowerCase().includes(query) ||
-                    e.fields?.some(f => f.value.toLowerCase().includes(query))
-                );
-            }
-            
-            displayEntries(entries);
-        }
-
-        function displayFilteredCategories(entries) {
-            const grid = document.getElementById('categoriesGrid');
-            grid.innerHTML = '';
-            
-            const categories = {};
-            entries.forEach(entry => {
-                const cat = entry.category || 'Sans catégorie';
-                if (!categories[cat]) {
-                    categories[cat] = 0;
-                }
-                categories[cat]++;
-            });
-            
-            for (const [name, count] of Object.entries(categories)) {
-                const color = name === 'Sans catégorie' ? '#444' : database.categories[name]?.color || '#607d8b';
-                const card = createCategoryCard(name, count, color);
-                card.onclick = () => {
-                    currentCategory = name === 'Sans catégorie' ? '' : name;
-                    document.getElementById('categoryTitle').textContent = name.charAt(0).toUpperCase() + name.slice(1);
-                    displayEntries(entries.filter(e => {
-                        if (name === 'Sans catégorie') return !e.category;
-                        return e.category === name;
-                    }));
-                    document.getElementById('mainScreen').classList.remove('active');
-                    document.getElementById('categoryView').classList.add('active');
-                };
-                grid.appendChild(card);
-            }
-        }
-
-        function switchScreen(screenId, navItem) {
-            // Hide all screens
-            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-            
-            // Show selected screen
-            document.getElementById(screenId).classList.add('active');
-            
-            // Update nav
-            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-            navItem.classList.add('active');
-            
-            // Reload data if going to main screen
-            if (screenId === 'mainScreen') {
-                loadCategories();
-            }
-            
-            startLockTimer();
-        }
-
-        function toggleSetting(setting) {
-            const switchElement = document.getElementById(setting + 'Switch');
-            switchElement.classList.toggle('active');
-            database.settings[setting] = switchElement.classList.contains('active');
-            saveDatabase();
-            
-            if (setting === 'autolock') {
-                if (database.settings.autolock) {
-                    startLockTimer();
-                } else {
-                    stopLockTimer();
-                }
-            }
-            
-            showToast('Paramètre modifié');
-        }
-
-        function exportData() {
-            const dataStr = JSON.stringify(database, null, 2);
-            const encrypted = CryptoJS.AES.encrypt(dataStr, masterKey).toString();
-            const blob = new Blob([encrypted], {type: 'text/plain'});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'password_safe_backup_' + new Date().toISOString().split('T')[0] + '.pws';
-            a.click();
-            URL.revokeObjectURL(url);
-            showToast('Données exportées avec succès');
-        }
-
-        function importData() {
-            const input = document.createElement('input');
-            input.type = 'file';
-            input.accept = '.pws,.json';
-            input.onchange = e => {
-                const file = e.target.files[0];
-                const reader = new FileReader();
-                reader.onload = event => {
-                    try {
-                        const content = event.target.result;
-                        let data;
-                        
-                        // Try to decrypt if it's encrypted
-                        try {
-                            const decrypted = CryptoJS.AES.decrypt(content, masterKey).toString(CryptoJS.enc.Utf8);
-                            data = JSON.parse(decrypted);
-                        } catch {
-                            // If decryption fails, try parsing as plain JSON
-                            data = JSON.parse(content);
-                        }
-                        
-                        // Merge data
-                        if (data.entries) {
-                            database.entries = [...database.entries, ...data.entries];
-                        }
-                        if (data.categories) {
-                            database.categories = {...database.categories, ...data.categories};
-                        }
-                        
-                        saveDatabase();
-                        loadCategories();
-                        showToast('Données importées avec succès');
-                    } catch (err) {
-                        showToast('Erreur lors de l\'importation');
-                        console.error(err);
-                    }
-                };
-                reader.readAsText(file);
-            };
-            input.click();
-        }
-
-        function changePassword() {
-            const newPassword = prompt('Entrez le nouveau mot de passe principal:');
-            if (newPassword && newPassword.length >= 6) {
-                const confirmPassword = prompt('Confirmez le nouveau mot de passe:');
-                if (confirmPassword === newPassword) {
-                    // Re-encrypt all password fields with new master key
-                    database.entries.forEach(entry => {
-                        if (entry.fields) {
-                            entry.fields.forEach(field => {
-                                if (field.type === 'password' && field.value) {
-                                    // Decrypt with old key and re-encrypt with new key
-                                    const decrypted = decrypt(field.value);
-                                    const oldKey = masterKey;
-                                    masterKey = newPassword;
-                                    field.value = encrypt(decrypted);
-                                    masterKey = oldKey;
-                                }
-                            });
-                        }
-                    });
-                    
-                    masterKey = newPassword;
-                    saveDatabase();
-                    showToast('Mot de passe modifié avec succès');
-                } else {
-                    showToast('Les mots de passe ne correspondent pas');
-                }
-            } else if (newPassword) {
-                showToast('Le mot de passe doit contenir au moins 6 caractères');
-            }
-        }
-
-        function encrypt(text) {
-            if (!text) return '';
-            return CryptoJS.AES.encrypt(text, masterKey).toString();
-        }
-
-        function decrypt(encryptedText) {
-            if (!encryptedText) return '';
-            try {
-                return CryptoJS.AES.decrypt(encryptedText, masterKey).toString(CryptoJS.enc.Utf8);
-            } catch {
-                return encryptedText; // Return as-is if decryption fails
-            }
-        }
-
-        function showToast(message) {
-            const toast = document.getElementById('toast');
-            toast.textContent = message;
-            toast.classList.add('show');
-            setTimeout(() => {
-                toast.classList.remove('show');
-            }, 3000);
-        }
-
-        // Handle Enter key on login screen
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('masterPassword').addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    login();
-                }
-            });
-        });
-
-        // Initialize app
-        window.onload = init;
-                <!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
@@ -972,938 +15,966 @@
             -webkit-tap-highlight-color: transparent;
         }
 
-        body {
-            background: #000;
-            color: #fff;
-            height: 100vh;
-            overflow: hidden;
-            position: relative;
-        }
-
-        .header {
-            background: linear-gradient(135deg, #0e7a75 0%, #17a097 100%);
-            padding: 20px;
-            text-align: center;
-            position: relative;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-        }
-
-        .status-bar {
-            position: absolute;
-            top: 10px;
-            left: 20px;
-            right: 20px;
-            display: flex;
-            justify-content: space-between;
-            font-size: 14px;
-            color: #fff;
-        }
-
-        .logo {
-            width: 100px;
-            height: 100px;
-            margin: 30px auto 10px;
-            position: relative;
-        }
-
-        .vault-icon {
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(145deg, #2a2a2a, #1a1a1a);
-            border-radius: 15px;
-            box-shadow: 
-                0 10px 30px rgba(0,0,0,0.5),
-                inset 0 2px 5px rgba(255,255,255,0.1);
-            position: relative;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .vault-door {
-            width: 60px;
-            height: 60px;
-            background: radial-gradient(circle at 30% 30%, #666, #333);
-            border-radius: 50%;
-            position: relative;
-            box-shadow: 
-                inset 0 2px 10px rgba(0,0,0,0.5),
-                0 2px 5px rgba(255,255,255,0.1);
-        }
-
-        .vault-door::before {
-            content: '';
-            position: absolute;
-            width: 50px;
-            height: 50px;
-            border: 3px solid #888;
-            border-radius: 50%;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-        }
-
-        .vault-door::after {
-            content: '';
-            position: absolute;
-            width: 30px;
-            height: 30px;
-            background: radial-gradient(circle, #444, #222);
-            border-radius: 50%;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-        }
-
-        .vault-handle {
-            position: absolute;
-            width: 15px;
-            height: 40px;
-            background: linear-gradient(90deg, #666, #444);
-            right: -10px;
-            top: 50%;
-            transform: translateY(-50%);
-            border-radius: 5px;
-            box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
-        }
-
-        .vault-bolts {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-        }
-
-        .bolt {
-            position: absolute;
-            width: 8px;
-            height: 8px;
-            background: radial-gradient(circle, #888, #555);
-            border-radius: 50%;
-            box-shadow: inset 0 1px 2px rgba(0,0,0,0.5);
-        }
-
-        .bolt:nth-child(1) { top: 10px; left: 10px; }
-        .bolt:nth-child(2) { top: 10px; right: 10px; }
-        .bolt:nth-child(3) { bottom: 10px; left: 10px; }
-        .bolt:nth-child(4) { bottom: 10px; right: 10px; }
-
-        .app-title {
-            font-size: 28px;
-            margin: 10px 0;
-            font-weight: 300;
-        }
-
-        .version {
-            font-size: 16px;
-            opacity: 0.9;
-        }
-
-        .container {
-            padding: 20px;
-            max-width: 600px;
-            margin: 0 auto;
-            height: calc(100vh - 200px);
-            overflow-y: auto;
-        }
-
-        .screen {
-            display: none;
-            animation: fadeIn 0.3s ease;
-        }
-
-        .screen.active {
-            display: block;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        h2 {
-            font-size: 20px;
-            margin-bottom: 20px;
-            font-weight: 400;
-        }
-
-        .input-group {
-            margin-bottom: 20px;
-        }
-
-        input, select, textarea {
-            width: 100%;
-            padding: 15px;
-            background: #1a1a1a;
-            border: 1px solid #333;
-            color: #fff;
-            border-radius: 8px;
-            font-size: 16px;
-            transition: all 0.3s ease;
-        }
-
-        input:focus, select:focus, textarea:focus {
-            outline: none;
-            border-color: #17a097;
-            background: #222;
-        }
-
-        .password-input-group {
-            position: relative;
-        }
-
-        .toggle-password {
-            position: absolute;
-            right: 15px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: none;
-            border: none;
-            color: #666;
-            cursor: pointer;
-            padding: 5px;
-            font-size: 20px;
-        }
-
-        .btn {
-            width: 100%;
-            padding: 15px;
-            background: linear-gradient(135deg, #ff6b35 0%, #ff8c42 100%);
-            color: #fff;
-            border: none;
-            border-radius: 25px;
-            font-size: 18px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin-bottom: 15px;
-            font-weight: 500;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(255,107,53,0.4);
-        }
-
-        .btn-secondary {
-            background: transparent;
-            color: #ff6b35;
-            border: 1px solid #ff6b35;
-        }
-
-        .btn-secondary:hover {
-            background: rgba(255,107,53,0.1);
-        }
-
-        .categories-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-
-        .category-card {
-            padding: 20px;
-            border-radius: 12px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .category-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 5px 20px rgba(255,255,255,0.1);
-        }
-
-        .category-name {
-            font-size: 18px;
-            margin-bottom: 5px;
-        }
-
-        .category-count {
-            font-size: 14px;
-            opacity: 0.8;
-        }
-
-        .nav-bar {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: #0e7a75;
-            display: flex;
-            justify-content: space-around;
-            padding: 10px 0;
-            box-shadow: 0 -2px 10px rgba(0,0,0,0.3);
-            z-index: 100;
-        }
-
-        .nav-item {
-            flex: 1;
-            text-align: center;
-            padding: 10px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            color: rgba(255,255,255,0.7);
-        }
-
-        .nav-item.active {
-            color: #fff;
-        }
-
-        .nav-item:hover {
-            background: rgba(255,255,255,0.1);
-        }
-
-        .entries-list {
-            margin-top: 20px;
-        }
-
-        .entry-item {
-            background: #1a1a1a;
-            padding: 15px;
-            border-radius: 12px;
-            margin-bottom: 15px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .entry-item:hover {
-            background: #222;
-            transform: translateX(5px);
-        }
-
-        .entry-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            background: #333;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-right: 15px;
-            font-size: 20px;
-        }
-
-        .entry-info {
-            flex: 1;
-        }
-
-        .entry-title {
-            font-size: 16px;
-            margin-bottom: 5px;
-        }
-
-        .entry-username {
-            font-size: 14px;
-            color: #888;
-        }
-
-        .entry-actions {
-            display: flex;
-            gap: 10px;
-        }
-
-        .action-btn {
-            background: none;
-            border: none;
-            color: #666;
-            cursor: pointer;
-            padding: 8px;
-            transition: all 0.3s ease;
-            font-size: 18px;
-        }
-
-        .action-btn:hover {
-            color: #17a097;
-        }
-
-        .pro-badge {
-            background: #ff4444;
-            color: #fff;
-            padding: 3px 10px;
-            border-radius: 15px;
-            font-size: 12px;
-            font-weight: bold;
-            margin-left: 10px;
-        }
-
-        .floating-add {
-            position: fixed;
-            bottom: 80px;
-            right: 20px;
-            width: 56px;
-            height: 56px;
-            background: linear-gradient(135deg, #ff6b35 0%, #ff8c42 100%);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            box-shadow: 0 4px 12px rgba(255,107,53,0.4);
-            transition: all 0.3s ease;
-            z-index: 100;
-        }
-
-        .floating-add:hover {
-            transform: scale(1.1);
-            box-shadow: 0 6px 20px rgba(255,107,53,0.6);
-        }
-
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0,0,0,0.9);
-            z-index: 1000;
-            animation: fadeIn 0.3s ease;
-        }
-
-        .modal.active {
-            display: flex;
-            align-items: flex-start;
-            justify-content: center;
-            padding-top: 50px;
-            overflow-y: auto;
-        }
-
-        .modal-content {
-            background: #1a1a1a;
-            width: 100%;
-            max-width: 100%;
-            min-height: 100vh;
-            margin-top: -50px;
-        }
-
-        .modal-header {
-            background: #0e7a75;
-            padding: 15px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            position: sticky;
-            top: 0;
-            z-index: 10;
-        }
-
-        .modal-header button {
-            background: none;
-            border: none;
-            color: #fff;
-            font-size: 16px;
-            cursor: pointer;
-            padding: 5px 10px;
-        }
-
-        .modal-body {
-            padding: 20px;
-        }
-
-        .icon-selector {
-            background: #2a2a2a;
-            padding: 20px;
-            border-radius: 12px;
-            text-align: center;
-            margin-bottom: 20px;
-            cursor: pointer;
-        }
-
-        .icon-selector:hover {
-            background: #333;
-        }
-
-        .selected-icon {
-            width: 60px;
-            height: 60px;
-            background: #444;
-            border-radius: 50%;
-            margin: 0 auto 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 30px;
-        }
-
-        .field-item {
-            background: #2a2a2a;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .field-info {
-            flex: 1;
-        }
-
-        .field-label {
-            font-size: 12px;
-            color: #888;
-            margin-bottom: 5px;
-        }
-
-        .field-value {
-            font-size: 16px;
-        }
-
-        .field-actions {
-            display: flex;
-            gap: 10px;
-        }
-
-        .add-field-btn {
-            background: transparent;
-            border: 1px solid #444;
-            color: #fff;
-            padding: 15px;
-            border-radius: 8px;
-            width: 100%;
-            text-align: center;
-            cursor: pointer;
-            margin: 10px 0;
-            transition: all 0.3s ease;
-        }
-
-        .add-field-btn:hover {
-            background: #2a2a2a;
-            border-color: #17a097;
-        }
-
-        .section-title {
-            color: #888;
-            font-size: 12px;
-            text-transform: uppercase;
-            margin: 20px 0 10px;
-            letter-spacing: 1px;
-        }
-
-        .category-selector {
-            display: flex;
-            align-items: center;
-            background: #2a2a2a;
-            padding: 15px;
-            border-radius: 8px;
-            cursor: pointer;
-        }
-
-        .category-color {
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-            margin-right: 15px;
-        }
-
-        .image-upload {
-            background: #2a2a2a;
-            padding: 40px;
-            border-radius: 12px;
-            text-align: center;
-            cursor: pointer;
-            border: 2px dashed #444;
-            transition: all 0.3s ease;
-        }
-
-        .image-upload:hover {
-            border-color: #17a097;
-            background: #333;
-        }
-
-        .icon-grid {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 15px;
-            padding: 20px;
-            max-height: 300px;
-            overflow-y: auto;
-        }
-
-        .icon-option {
-            width: 50px;
-            height: 50px;
-            background: #2a2a2a;
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-size: 24px;
-        }
-
-        .icon-option:hover {
-            background: #333;
-            transform: scale(1.1);
-        }
-
-        .icon-option.selected {
-            background: #17a097;
-        }
-
-        .toast {
-            position: fixed;
-            bottom: 100px;
-            left: 50%;
-            transform: translateX(-50%) translateY(100px);
-            background: #333;
-            color: #fff;
-            padding: 15px 25px;
-            border-radius: 25px;
-            opacity: 0;
-            transition: all 0.3s ease;
-            z-index: 2000;
-        }
-
-        .toast.show {
-            opacity: 1;
-            transform: translateX(-50%) translateY(0);
-        }
-
-        .settings-item {
-            background: #1a1a1a;
-            padding: 15px;
-            border-radius: 12px;
-            margin-bottom: 15px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .settings-item:hover {
-            background: #222;
-        }
-
-        .switch {
-            width: 50px;
-            height: 26px;
-            background: #333;
-            border-radius: 13px;
-            position: relative;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .switch.active {
-            background: #17a097;
-        }
-
-        .switch::after {
-            content: '';
-            position: absolute;
-            width: 22px;
-            height: 22px;
-            background: #fff;
-            border-radius: 50%;
-            top: 2px;
-            left: 2px;
-            transition: all 0.3s ease;
-        }
-
-        .switch.active::after {
-            left: 26px;
-        }
-
-        .dropdown-menu {
-            position: absolute;
-            top: 100%;
-            right: 0;
-            background: #2a2a2a;
-            border-radius: 8px;
-            box-shadow: 0 5px 20px rgba(0,0,0,0.5);
-            display: none;
-            min-width: 200px;
-            z-index: 1000;
-        }
-
-        .dropdown-menu.show {
-            display: block;
-        }
-
-        .dropdown-item {
-            padding: 12px 15px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border-bottom: 1px solid #333;
-        }
-
-        .dropdown-item:last-child {
-            border-bottom: none;
-        }
-
-        .dropdown-item:hover {
-            background: #333;
-        }
-
-        .custom-field-modal {
-            background: #2a2a2a;
-            padding: 20px;
-            border-radius: 12px;
-            margin: 20px 0;
-        }
-
-        .custom-field-modal input {
-            margin-bottom: 10px;
-        }
-
-        .field-type-selector {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 10px;
-            margin: 10px 0;
-        }
-
-        .field-type-option {
-            padding: 10px;
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 8px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-
-        .field-type-option.selected {
-            background: #17a097;
-            border-color: #17a097;
-        }
-
-        .otp-section {
-            background: #2a2a2a;
-            padding: 20px;
-            border-radius: 12px;
-            margin: 20px 0;
-            text-align: center;
-        }
-
-        .otp-code {
-            font-size: 32px;
-            font-family: 'Courier New', monospace;
-            letter-spacing: 8px;
-            margin: 20px 0;
-            color: #17a097;
-        }
-
-        .otp-timer {
-            width: 100%;
-            height: 4px;
-            background: #333;
-            border-radius: 2px;
-            overflow: hidden;
-        }
-
-        .otp-timer-fill {
-            height: 100%;
-            background: #17a097;
-            transition: width 1s linear;
-        }
-
-        .attachment-item {
-            background: #2a2a2a;
-            padding: 12px;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-
-        .attachment-icon {
-            width: 40px;
-            height: 40px;
-            background: #444;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-right: 12px;
-        }
-
-        .attachment-info {
-            flex: 1;
-        }
-
-        .attachment-name {
-            font-size: 14px;
-            margin-bottom: 4px;
-        }
-
-        .attachment-size {
-            font-size: 12px;
-            color: #888;
-        }
-    </style>
+```
+    body {
+        background: #000;
+        color: #fff;
+        height: 100vh;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .header {
+        background: linear-gradient(135deg, #0e7a75 0%, #17a097 100%);
+        padding: 20px;
+        text-align: center;
+        position: relative;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    }
+
+    .status-bar {
+        position: absolute;
+        top: 10px;
+        left: 20px;
+        right: 20px;
+        display: flex;
+        justify-content: space-between;
+        font-size: 14px;
+        color: #fff;
+    }
+
+    .logo {
+        width: 100px;
+        height: 100px;
+        margin: 30px auto 10px;
+        position: relative;
+    }
+
+    .vault-icon {
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(145deg, #2a2a2a, #1a1a1a);
+        border-radius: 15px;
+        box-shadow: 
+            0 10px 30px rgba(0,0,0,0.5),
+            inset 0 2px 5px rgba(255,255,255,0.1);
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .vault-door {
+        width: 60px;
+        height: 60px;
+        background: radial-gradient(circle at 30% 30%, #666, #333);
+        border-radius: 50%;
+        position: relative;
+        box-shadow: 
+            inset 0 2px 10px rgba(0,0,0,0.5),
+            0 2px 5px rgba(255,255,255,0.1);
+    }
+
+    .vault-door::before {
+        content: '';
+        position: absolute;
+        width: 50px;
+        height: 50px;
+        border: 3px solid #888;
+        border-radius: 50%;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+    }
+
+    .vault-door::after {
+        content: '';
+        position: absolute;
+        width: 30px;
+        height: 30px;
+        background: radial-gradient(circle, #444, #222);
+        border-radius: 50%;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+    }
+
+    .vault-handle {
+        position: absolute;
+        width: 15px;
+        height: 40px;
+        background: linear-gradient(90deg, #666, #444);
+        right: -10px;
+        top: 50%;
+        transform: translateY(-50%);
+        border-radius: 5px;
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+    }
+
+    .vault-bolts {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+    }
+
+    .bolt {
+        position: absolute;
+        width: 8px;
+        height: 8px;
+        background: radial-gradient(circle, #888, #555);
+        border-radius: 50%;
+        box-shadow: inset 0 1px 2px rgba(0,0,0,0.5);
+    }
+
+    .bolt:nth-child(1) { top: 10px; left: 10px; }
+    .bolt:nth-child(2) { top: 10px; right: 10px; }
+    .bolt:nth-child(3) { bottom: 10px; left: 10px; }
+    .bolt:nth-child(4) { bottom: 10px; right: 10px; }
+
+    .app-title {
+        font-size: 28px;
+        margin: 10px 0;
+        font-weight: 300;
+    }
+
+    .version {
+        font-size: 16px;
+        opacity: 0.9;
+    }
+
+    .container {
+        padding: 20px;
+        max-width: 600px;
+        margin: 0 auto;
+        height: calc(100vh - 200px);
+        overflow-y: auto;
+    }
+
+    .screen {
+        display: none;
+        animation: fadeIn 0.3s ease;
+    }
+
+    .screen.active {
+        display: block;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+
+    h2 {
+        font-size: 20px;
+        margin-bottom: 20px;
+        font-weight: 400;
+    }
+
+    .input-group {
+        margin-bottom: 20px;
+    }
+
+    input, select, textarea {
+        width: 100%;
+        padding: 15px;
+        background: #1a1a1a;
+        border: 1px solid #333;
+        color: #fff;
+        border-radius: 8px;
+        font-size: 16px;
+        transition: all 0.3s ease;
+    }
+
+    input:focus, select:focus, textarea:focus {
+        outline: none;
+        border-color: #17a097;
+        background: #222;
+    }
+
+    .password-input-group {
+        position: relative;
+    }
+
+    .toggle-password {
+        position: absolute;
+        right: 15px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        color: #666;
+        cursor: pointer;
+        padding: 5px;
+        font-size: 20px;
+    }
+
+    .btn {
+        width: 100%;
+        padding: 15px;
+        background: linear-gradient(135deg, #ff6b35 0%, #ff8c42 100%);
+        color: #fff;
+        border: none;
+        border-radius: 25px;
+        font-size: 18px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        margin-bottom: 15px;
+        font-weight: 500;
+    }
+
+    .btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 20px rgba(255,107,53,0.4);
+    }
+
+    .btn-secondary {
+        background: transparent;
+        color: #ff6b35;
+        border: 1px solid #ff6b35;
+    }
+
+    .btn-secondary:hover {
+        background: rgba(255,107,53,0.1);
+    }
+
+    .categories-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+
+    .category-card {
+        padding: 20px;
+        border-radius: 12px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .category-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 5px 20px rgba(255,255,255,0.1);
+    }
+
+    .category-name {
+        font-size: 18px;
+        margin-bottom: 5px;
+    }
+
+    .category-count {
+        font-size: 14px;
+        opacity: 0.8;
+    }
+
+    .nav-bar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: #0e7a75;
+        display: flex;
+        justify-content: space-around;
+        padding: 10px 0;
+        box-shadow: 0 -2px 10px rgba(0,0,0,0.3);
+        z-index: 100;
+    }
+
+    .nav-item {
+        flex: 1;
+        text-align: center;
+        padding: 10px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        color: rgba(255,255,255,0.7);
+    }
+
+    .nav-item.active {
+        color: #fff;
+    }
+
+    .nav-item:hover {
+        background: rgba(255,255,255,0.1);
+    }
+
+    .entries-list {
+        margin-top: 20px;
+    }
+
+    .entry-item {
+        background: #1a1a1a;
+        padding: 15px;
+        border-radius: 12px;
+        margin-bottom: 15px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .entry-item:hover {
+        background: #222;
+        transform: translateX(5px);
+    }
+
+    .entry-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #333;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 15px;
+        font-size: 20px;
+    }
+
+    .entry-info {
+        flex: 1;
+    }
+
+    .entry-title {
+        font-size: 16px;
+        margin-bottom: 5px;
+    }
+
+    .entry-username {
+        font-size: 14px;
+        color: #888;
+    }
+
+    .entry-actions {
+        display: flex;
+        gap: 10px;
+    }
+
+    .action-btn {
+        background: none;
+        border: none;
+        color: #666;
+        cursor: pointer;
+        padding: 8px;
+        transition: all 0.3s ease;
+        font-size: 18px;
+    }
+
+    .action-btn:hover {
+        color: #17a097;
+    }
+
+    .pro-badge {
+        background: #ff4444;
+        color: #fff;
+        padding: 3px 10px;
+        border-radius: 15px;
+        font-size: 12px;
+        font-weight: bold;
+        margin-left: 10px;
+    }
+
+    .floating-add {
+        position: fixed;
+        bottom: 80px;
+        right: 20px;
+        width: 56px;
+        height: 56px;
+        background: linear-gradient(135deg, #ff6b35 0%, #ff8c42 100%);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(255,107,53,0.4);
+        transition: all 0.3s ease;
+        z-index: 100;
+    }
+
+    .floating-add:hover {
+        transform: scale(1.1);
+        box-shadow: 0 6px 20px rgba(255,107,53,0.6);
+    }
+
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.9);
+        z-index: 1000;
+        animation: fadeIn 0.3s ease;
+    }
+
+    .modal.active {
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding-top: 50px;
+        overflow-y: auto;
+    }
+
+    .modal-content {
+        background: #1a1a1a;
+        width: 100%;
+        max-width: 100%;
+        min-height: 100vh;
+        margin-top: -50px;
+    }
+
+    .modal-header {
+        background: #0e7a75;
+        padding: 15px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+
+    .modal-header button {
+        background: none;
+        border: none;
+        color: #fff;
+        font-size: 16px;
+        cursor: pointer;
+        padding: 5px 10px;
+    }
+
+    .modal-body {
+        padding: 20px;
+    }
+
+    .icon-selector {
+        background: #2a2a2a;
+        padding: 20px;
+        border-radius: 12px;
+        text-align: center;
+        margin-bottom: 20px;
+        cursor: pointer;
+    }
+
+    .icon-selector:hover {
+        background: #333;
+    }
+
+    .selected-icon {
+        width: 60px;
+        height: 60px;
+        background: #444;
+        border-radius: 50%;
+        margin: 0 auto 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 30px;
+    }
+
+    .field-item {
+        background: #2a2a2a;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .field-info {
+        flex: 1;
+    }
+
+    .field-label {
+        font-size: 12px;
+        color: #888;
+        margin-bottom: 5px;
+    }
+
+    .field-value {
+        font-size: 16px;
+    }
+
+    .field-actions {
+        display: flex;
+        gap: 10px;
+    }
+
+    .add-field-btn {
+        background: transparent;
+        border: 1px solid #444;
+        color: #fff;
+        padding: 15px;
+        border-radius: 8px;
+        width: 100%;
+        text-align: center;
+        cursor: pointer;
+        margin: 10px 0;
+        transition: all 0.3s ease;
+    }
+
+    .add-field-btn:hover {
+        background: #2a2a2a;
+        border-color: #17a097;
+    }
+
+    .section-title {
+        color: #888;
+        font-size: 12px;
+        text-transform: uppercase;
+        margin: 20px 0 10px;
+        letter-spacing: 1px;
+    }
+
+    .category-selector {
+        display: flex;
+        align-items: center;
+        background: #2a2a2a;
+        padding: 15px;
+        border-radius: 8px;
+        cursor: pointer;
+    }
+
+    .category-color {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        margin-right: 15px;
+    }
+
+    .image-upload {
+        background: #2a2a2a;
+        padding: 40px;
+        border-radius: 12px;
+        text-align: center;
+        cursor: pointer;
+        border: 2px dashed #444;
+        transition: all 0.3s ease;
+    }
+
+    .image-upload:hover {
+        border-color: #17a097;
+        background: #333;
+    }
+
+    .icon-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 15px;
+        padding: 20px;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+
+    .icon-option {
+        width: 50px;
+        height: 50px;
+        background: #2a2a2a;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        font-size: 24px;
+    }
+
+    .icon-option:hover {
+        background: #333;
+        transform: scale(1.1);
+    }
+
+    .icon-option.selected {
+        background: #17a097;
+    }
+
+    .toast {
+        position: fixed;
+        bottom: 100px;
+        left: 50%;
+        transform: translateX(-50%) translateY(100px);
+        background: #333;
+        color: #fff;
+        padding: 15px 25px;
+        border-radius: 25px;
+        opacity: 0;
+        transition: all 0.3s ease;
+        z-index: 2000;
+    }
+
+    .toast.show {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+    }
+
+    .settings-item {
+        background: #1a1a1a;
+        padding: 15px;
+        border-radius: 12px;
+        margin-bottom: 15px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .settings-item:hover {
+        background: #222;
+    }
+
+    .switch {
+        width: 50px;
+        height: 26px;
+        background: #333;
+        border-radius: 13px;
+        position: relative;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .switch.active {
+        background: #17a097;
+    }
+
+    .switch::after {
+        content: '';
+        position: absolute;
+        width: 22px;
+        height: 22px;
+        background: #fff;
+        border-radius: 50%;
+        top: 2px;
+        left: 2px;
+        transition: all 0.3s ease;
+    }
+
+    .switch.active::after {
+        left: 26px;
+    }
+
+    .dropdown-menu {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        background: #2a2a2a;
+        border-radius: 8px;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+        display: none;
+        min-width: 200px;
+        z-index: 1000;
+    }
+
+    .dropdown-menu.show {
+        display: block;
+    }
+
+    .dropdown-item {
+        padding: 12px 15px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        border-bottom: 1px solid #333;
+    }
+
+    .dropdown-item:last-child {
+        border-bottom: none;
+    }
+
+    .dropdown-item:hover {
+        background: #333;
+    }
+
+    .custom-field-modal {
+        background: #2a2a2a;
+        padding: 20px;
+        border-radius: 12px;
+        margin: 20px 0;
+    }
+
+    .custom-field-modal input {
+        margin-bottom: 10px;
+    }
+
+    .field-type-selector {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        margin: 10px 0;
+    }
+
+    .field-type-option {
+        padding: 10px;
+        background: #1a1a1a;
+        border: 1px solid #333;
+        border-radius: 8px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .field-type-option.selected {
+        background: #17a097;
+        border-color: #17a097;
+    }
+
+    .otp-section {
+        background: #2a2a2a;
+        padding: 20px;
+        border-radius: 12px;
+        margin: 20px 0;
+        text-align: center;
+    }
+
+    .otp-code {
+        font-size: 32px;
+        font-family: 'Courier New', monospace;
+        letter-spacing: 8px;
+        margin: 20px 0;
+        color: #17a097;
+    }
+
+    .otp-timer {
+        width: 100%;
+        height: 4px;
+        background: #333;
+        border-radius: 2px;
+        overflow: hidden;
+    }
+
+    .otp-timer-fill {
+        height: 100%;
+        background: #17a097;
+        transition: width 1s linear;
+    }
+
+    .attachment-item {
+        background: #2a2a2a;
+        padding: 12px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+
+    .attachment-icon {
+        width: 40px;
+        height: 40px;
+        background: #444;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 12px;
+    }
+
+    .attachment-info {
+        flex: 1;
+    }
+
+    .attachment-name {
+        font-size: 14px;
+        margin-bottom: 4px;
+    }
+
+    .attachment-size {
+        font-size: 12px;
+        color: #888;
+    }
+</style>
+```
+
 </head>
 <body>
     <div class="header">
-        <div class="status-bar">
-            <span id="time">22:28</span>
-            <span>📶 📶 🔋</span>
-        </div>
-        <div class="logo">
-            <div class="vault-icon">
-                <div class="vault-bolts">
-                    <div class="bolt"></div>
-                    <div class="bolt"></div>
-                    <div class="bolt"></div>
-                    <div class="bolt"></div>
-                </div>
-                <div class="vault-door"></div>
-                <div class="vault-handle"></div>
-            </div>
-        </div>
-        <h1 class="app-title">Password Safe</h1>
-        <p class="version">Version 8.3.0 #300</p>
-    </div>
 
-    <!-- Login Screen -->
-    <div id="loginScreen" class="screen active">
-        <div class="container">
-            <h2>Veuillez entrer votre mot de passe</h2>
+```
+    <div class="logo">
+        <div class="vault-icon">
+            <div class="vault-bolts">
+                <div class="bolt"></div>
+                <div class="bolt"></div>
+                <div class="bolt"></div>
+                <div class="bolt"></div>
+            </div>
+            <div class="vault-door"></div>
+            <div class="vault-handle"></div>
+        </div>
+    </div>
+    <h1 class="app-title">Password Safe</h1>
+    <p class="version">Version 8.3.0 #300</p>
+</div>
+
+<!-- Login Screen -->
+<div id="loginScreen" class="screen active">
+    <div class="container">
+        <h2 id="loginTitle">Bienvenue dans Password Safe</h2>
+        <p id="loginSubtitle" style="color: #888; margin-bottom: 20px;">Créez votre mot de passe principal pour commencer</p>
+        
+        <div id="newUserSection">
             <div class="input-group password-input-group">
-                <input type="password" id="masterPassword" placeholder="Mot de passe" autofocus>
+                <input type="password" id="newMasterPassword" placeholder="Nouveau mot de passe (minimum 6 caractères)" autofocus>
+                <button class="toggle-password" onclick="togglePassword('newMasterPassword')">👁</button>
+            </div>
+            <div class="input-group password-input-group">
+                <input type="password" id="confirmMasterPassword" placeholder="Confirmer le mot de passe">
+                <button class="toggle-password" onclick="togglePassword('confirmMasterPassword')">👁</button>
+            </div>
+            <button class="btn" onclick="createMasterPassword()">Créer mon coffre-fort</button>
+        </div>
+        
+        <div id="existingUserSection" style="display: none;">
+            <div class="input-group password-input-group">
+                <input type="password" id="masterPassword" placeholder="Mot de passe">
                 <button class="toggle-password" onclick="togglePassword('masterPassword')">👁</button>
             </div>
             <button class="btn" onclick="login()">Valider</button>
             <button class="btn btn-secondary" onclick="showToast('Fonction de restauration disponible dans la version PRO')">Restaurer la base de données</button>
         </div>
-    </div>
-
-    <!-- Main Screen -->
-    <div id="mainScreen" class="screen">
-        <div class="container">
-            <div style="background: #1a1a1a; padding: 12px 20px; border-radius: 25px; display: flex; align-items: center; margin-bottom: 20px;">
-                <span style="margin-right: 10px;">🔍</span>
-                <input type="text" id="searchInput" placeholder="Recherche" onkeyup="searchEntries()" style="background: none; border: none; color: #fff; flex: 1; padding: 0;">
-            </div>
-            <div class="categories-grid" id="categoriesGrid"></div>
-        </div>
-        <div class="floating-add" onclick="openAddModal()">
-            <span style="font-size: 24px; color: white;">+</span>
+        
+        <div style="text-align: center; margin-top: 30px;">
+            <a href="#" id="switchLoginMode" onclick="switchLoginMode()" style="color: #17a097; text-decoration: none;">J'ai déjà un compte</a>
         </div>
     </div>
+</div>
 
-    <!-- Category View -->
-    <div id="categoryView" class="screen">
-        <div class="container">
-            <button class="btn btn-secondary" onclick="backToMain()">← Retour</button>
-            <h2 id="categoryTitle"></h2>
-            <div style="background: #1a1a1a; padding: 12px 20px; border-radius: 25px; display: flex; align-items: center; margin-bottom: 20px;">
-                <span style="margin-right: 10px;">🔍</span>
-                <input type="text" id="categorySearchInput" placeholder="Recherche" onkeyup="searchCategoryEntries()" style="background: none; border: none; color: #fff; flex: 1; padding: 0;">
-            </div>
-            <div class="entries-list" id="entriesList"></div>
+<!-- Main Screen -->
+<div id="mainScreen" class="screen">
+    <div class="container">
+        <div style="background: #1a1a1a; padding: 12px 20px; border-radius: 25px; display: flex; align-items: center; margin-bottom: 20px;">
+            <span style="margin-right: 10px;">🔍</span>
+            <input type="text" id="searchInput" placeholder="Recherche" onkeyup="searchEntries()" style="background: none; border: none; color: #fff; flex: 1; padding: 0;">
+        </div>
+        <div class="categories-grid" id="categoriesGrid"></div>
+    </div>
+    <div class="floating-add" onclick="openAddModal()">
+        <span style="font-size: 24px; color: white;">+</span>
+    </div>
+</div>
+
+<!-- Category View -->
+<div id="categoryView" class="screen">
+    <div class="container">
+        <button class="btn btn-secondary" onclick="backToMain()">← Retour</button>
+        <h2 id="categoryTitle"></h2>
+        <div style="background: #1a1a1a; padding: 12px 20px; border-radius: 25px; display: flex; align-items: center; margin-bottom: 20px;">
+            <span style="margin-right: 10px;">🔍</span>
+            <input type="text" id="categorySearchInput" placeholder="Recherche" onkeyup="searchCategoryEntries()" style="background: none; border: none; color: #fff; flex: 1; padding: 0;">
+        </div>
+        <div class="entries-list" id="entriesList"></div>
+    </div>
+</div>
+
+<!-- Entry Detail View -->
+<div id="entryDetail" class="screen">
+    <div class="container">
+        <button class="btn btn-secondary" onclick="backToCategory()">← Retour</button>
+        <div style="display: flex; align-items: center; margin: 20px 0;">
+            <div id="entryIcon" class="entry-icon" style="width: 60px; height: 60px; font-size: 30px;"></div>
+            <h2 id="entryTitle" style="margin: 0; margin-left: 15px;"></h2>
+        </div>
+        
+        <div id="detailFields"></div>
+        
+        <button class="btn" onclick="editEntry()">Éditer</button>
+        <button class="btn btn-secondary" onclick="deleteEntry()">Supprimer</button>
+    </div>
+</div>
+
+<!-- Settings Screen -->
+<div id="settingsScreen" class="screen">
+    <div class="container">
+        <h2>Paramètres</h2>
+        
+        <div class="settings-item" onclick="toggleSetting('autolock')">
+            <span>Verrouillage automatique</span>
+            <div class="switch active" id="autolockSwitch"></div>
+        </div>
+        
+        <div class="settings-item" onclick="toggleSetting('biometric')">
+            <span>Déverrouillage biométrique</span>
+            <div class="switch" id="biometricSwitch"></div>
+        </div>
+        
+        <div class="settings-item" onclick="exportData()">
+            <span>Exporter les données</span>
+            <span>→</span>
+        </div>
+        
+        <div class="settings-item" onclick="importData()">
+            <span>Importer les données</span>
+            <span>→</span>
+        </div>
+        
+        <div class="settings-item" onclick="changePassword()">
+            <span>Modifier le mot de passe principal</span>
+            <span>→</span>
+        </div>
+        
+        <div class="settings-item" onclick="showToast('Version PRO requise')">
+            <span>Synchronisation Cloud</span>
+            <span class="pro-badge">PRO</span>
+        </div>
+        
+        <div class="settings-item" onclick="showToast('Version PRO requise')">
+            <span>Sauvegarde automatique</span>
+            <span class="pro-badge">PRO</span>
         </div>
     </div>
+</div>
 
-    <!-- Entry Detail View -->
-    <div id="entryDetail" class="screen">
-        <div class="container">
-            <button class="btn btn-secondary" onclick="backToCategory()">← Retour</button>
-            <div style="display: flex; align-items: center; margin: 20px 0;">
-                <div id="entryIcon" class="entry-icon" style="width: 60px; height: 60px; font-size: 30px;"></div>
-                <h2 id="entryTitle" style="margin: 0; margin-left: 15px;"></h2>
-            </div>
-            
-            <div id="detailFields"></div>
-            
-            <button class="btn" onclick="editEntry()">Éditer</button>
-            <button class="btn btn-secondary" onclick="deleteEntry()">Supprimer</button>
+<!-- Add/Edit Modal -->
+<div id="addModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <button onclick="closeModal()">Annuler</button>
+            <h2 id="modalTitle">Modifier l'entrée</h2>
+            <button onclick="saveEntry()">Enregistrer</button>
         </div>
-    </div>
-
-    <!-- Settings Screen -->
-    <div id="settingsScreen" class="screen">
-        <div class="container">
-            <h2>Paramètres</h2>
-            
-            <div class="settings-item" onclick="toggleSetting('autolock')">
-                <span>Verrouillage automatique</span>
-                <div class="switch active" id="autolockSwitch"></div>
+        
+        <div class="modal-body">
+            <div class="icon-selector" onclick="openIconPicker()">
+                <div class="selected-icon" id="selectedIcon">🔒</div>
+                <div>Sélectionner l'icône</div>
             </div>
             
-            <div class="settings-item" onclick="toggleSetting('biometric')">
-                <span>Déverrouillage biométrique</span>
-                <div class="switch" id="biometricSwitch"></div>
-            </div>
+            <div class="section-title">NOM</div>
+            <input type="text" id="newTitle" placeholder="Nom de l'entrée">
             
-            <div class="settings-item" onclick="exportData()">
-                <span>Exporter les données</span>
-                <span>→</span>
+            <div class="section-title">CATÉGORIE</div>
+            <div class="add-field-btn" onclick="showCategorySelector()">
+                <span id="selectedCategoryText">Ajouter une catégorie</span>
             </div>
-            
-            <div class="settings-item" onclick="importData()">
-                <span>Importer les données</span>
-                <span>→</span>
-            </div>
-            
-            <div class="settings-item" onclick="changePassword()">
-                <span>Modifier le mot de passe principal</span>
-                <span>→</span>
-            </div>
-            
-            <div class="settings-item" onclick="showToast('Version PRO requise')">
-                <span>Synchronisation Cloud</span>
-                <span class="pro-badge">PRO</span>
-            </div>
-            
-            <div class="settings-item" onclick="showToast('Version PRO requise')">
-                <span>Sauvegarde automatique</span>
-                <span class="pro-badge">PRO</span>
-            </div>
-        </div>
-    </div>
-
-    <!-- Add/Edit Modal -->
-    <div id="addModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <button onclick="closeModal()">Annuler</button>
-                <h2 id="modalTitle">Modifier l'entrée</h2>
-                <button onclick="saveEntry()">Enregistrer</button>
-            </div>
-            
-            <div class="modal-body">
-                <div class="icon-selector" onclick="openIconPicker()">
-                    <div class="selected-icon" id="selectedIcon">🔒</div>
-                    <div>Sélectionner l'icône</div>
-                </div>
-                
-                <div class="section-title">NOM</div>
-                <input type="text" id="newTitle" placeholder="Nom de l'entrée">
-                
-                <div class="section-title">CATÉGORIE</div>
-                <div class="add-field-btn" onclick="showCategorySelector()">
-                    <span id="selectedCategoryText">Ajouter une catégorie</span>
-                </div>
-                <div id="selectedCategoryDisplay" style="display: none;">
-                    <div class="category-selector">
-                        <div class="category-color" id="selectedCategoryColor"></div>
-                        <div style="flex: 1;">
-                            <div id="selectedCategoryName"></div>
-                        </div>
-                        <button class="action-btn" onclick="removeCategory()">🗑️</button>
+            <div id="selectedCategoryDisplay" style="display: none;">
+                <div class="category-selector">
+                    <div class="category-color" id="selectedCategoryColor"></div>
+                    <div style="flex: 1;">
+                        <div id="selectedCategoryName"></div>
                     </div>
+                    <button class="action-btn" onclick="removeCategory()">🗑️</button>
                 </div>
-                
-                <div class="section-title">IMAGE</div>
-                <div class="add-field-btn" onclick="showToast('Fonction d\'ajout d\'image disponible prochainement')">
-                    Ajouter une image
-                </div>
-                
-                <div class="section-title">DONNÉES</div>
-                <div id="customFields"></div>
-                <div class="add-field-btn" onclick="showAddFieldMenu()">
-                    Ajouter champ
-                </div>
-                
-                <div class="section-title">MOTS DE PASSE À USAGE UNIQUE</div>
-                <div class="add-field-btn" onclick="showToast('Fonction OTP disponible dans la version PRO')">
-                    Ajouter un mot de passe à usage unique
+            </div>
+            
+            <div class="section-title">IMAGE</div>
+            <div class="add-field-btn" onclick="showToast('Fonction d\'ajout d\'image disponible prochainement')">
+                Ajouter une image
+            </div>
+            
+            <div class="section-title">DONNÉES</div>
+            <div id="customFields"></div>
+            <div class="add-field-btn" onclick="showAddFieldMenu()">
+                Ajouter champ
+            </div>
+            
+            <div class="section-title">MOTS DE PASSE À USAGE UNIQUE</div>
+            <div class="add-field-btn" onclick="showToast('Fonction OTP disponible dans la version PRO')">
+                Ajouter un mot de passe à usage unique
+            </div>
+            
+            <div class="section-title">PIÈCES JOINTES</div>
+            <div id="attachments"></div>
+            <div class="add-field-btn" onclick="showToast('Fonction de pièces jointes disponible prochainement')">
+                Ajouter une pièce jointe
+```
