@@ -1,4 +1,838 @@
-<!DOCTYPE html>
+'email': { color: '#9c27b0', icon: '📧' },
+                'jeux': { color: '#2196f3', icon: '🎮' },
+                'shopping': { color: '#ff9800', icon: '🛒' },
+                'gouvernement': { color: '#607d8b', icon: '🏛️' },
+                'santé': { color: '#4caf50', icon: '🏥' },
+                'film': { color: '#e91e63', icon: '🎬' },
+                'musique': { color: '#795548', icon: '🎵' }
+            },
+            settings: {
+                autolock: true,
+                biometric: false,
+                lockTimeout: 60000
+            }
+        };
+        let currentCategory = null;
+        let currentEntry = null;
+        let editMode = false;
+        let selectedIconTemp = '🔒';
+        let selectedCategoryTemp = null;
+        let customFieldsTemp = [];
+        let lockTimer = null;
+
+        // Icon list
+        const icons = ['🔒', '🔑', '🛡️', '🏦', '📧', '🌐', '💳', '📱', '💻', '🎮', 
+                      '🛒', '🏥', '✈️', '🚗', '🏠', '📚', '🎬', '🎵', '🍔', '☕',
+                      '⚡', '💰', '📦', '🎯', '🔐', '🗝️', '🔓', '🔏', '📍', '📎'];
+
+        // Initialize
+        function init() {
+            loadDatabase();
+            checkFirstTime();
+        }
+
+        function checkFirstTime() {
+            const hasAccount = localStorage.getItem('passwordSafeMaster');
+            const newUserSection = document.getElementById('newUserSection');
+            const existingUserSection = document.getElementById('existingUserSection');
+            const switchLink = document.getElementById('switchLoginMode');
+            
+            if (hasAccount) {
+                newUserSection.style.display = 'none';
+                existingUserSection.style.display = 'block';
+                document.getElementById('loginTitle').textContent = 'Veuillez entrer votre mot de passe';
+                document.getElementById('loginSubtitle').textContent = 'Entrez votre mot de passe principal pour accéder à vos données';
+                switchLink.textContent = 'Réinitialiser le coffre-fort';
+            } else {
+                newUserSection.style.display = 'block';
+                existingUserSection.style.display = 'none';
+                document.getElementById('loginTitle').textContent = 'Bienvenue dans Password Safe';
+                document.getElementById('loginSubtitle').textContent = 'Créez votre mot de passe principal pour commencer';
+                switchLink.textContent = "J'ai déjà un compte";
+            }
+        }
+
+        function switchLoginMode() {
+            const hasAccount = localStorage.getItem('passwordSafeMaster');
+            const newUserSection = document.getElementById('newUserSection');
+            const existingUserSection = document.getElementById('existingUserSection');
+            const switchLink = document.getElementById('switchLoginMode');
+            
+            if (hasAccount && switchLink.textContent === 'Réinitialiser le coffre-fort') {
+                if (confirm('⚠️ ATTENTION : Réinitialiser le coffre-fort supprimera TOUTES vos données. Continuer?')) {
+                    if (confirm('Dernière confirmation : Toutes vos entrées seront perdues. Continuer?')) {
+                        localStorage.clear();
+                        database = {
+                            entries: [],
+                            categories: {
+                                'app store': { color: '#ffeb3b', icon: '📱' },
+                                'assurance': { color: '#607d8b', icon: '🛡️' },
+                                'banque': { color: '#f44336', icon: '🏦' },
+                                'email': { color: '#9c27b0', icon: '📧' },
+                                'jeux': { color: '#2196f3', icon: '🎮' },
+                                'shopping': { color: '#ff9800', icon: '🛒' },
+                                'gouvernement': { color: '#607d8b', icon: '🏛️' },
+                                'santé': { color: '#4caf50', icon: '🏥' },
+                                'film': { color: '#e91e63', icon: '🎬' },
+                                'musique': { color: '#795548', icon: '🎵' }
+                            },
+                            settings: { autolock: true, biometric: false, lockTimeout: 60000 }
+                        };
+                        checkFirstTime();
+                        showToast('Coffre-fort réinitialisé');
+                    }
+                }
+            } else {
+                if (newUserSection.style.display === 'none') {
+                    newUserSection.style.display = 'block';
+                    existingUserSection.style.display = 'none';
+                    switchLink.textContent = "J'ai déjà un compte";
+                    document.getElementById('loginTitle').textContent = 'Créer un nouveau coffre-fort';
+                    document.getElementById('loginSubtitle').textContent = 'Attention : Ceci créera un nouveau coffre-fort vide';
+                } else {
+                    newUserSection.style.display = 'none';
+                    existingUserSection.style.display = 'block';
+                    switchLink.textContent = 'Créer un nouveau compte';
+                    document.getElementById('loginTitle').textContent = 'Se connecter';
+                    document.getElementById('loginSubtitle').textContent = 'Entrez votre mot de passe existant';
+                }
+            }
+        }
+
+        function createMasterPassword() {
+            const password = document.getElementById('newMasterPassword').value;
+            const confirm = document.getElementById('confirmMasterPassword').value;
+            
+            if (!password || !confirm) {
+                showToast('Veuillez remplir tous les champs');
+                return;
+            }
+            
+            if (password.length < 6) {
+                showToast('Le mot de passe doit contenir au moins 6 caractères');
+                return;
+            }
+            
+            if (password !== confirm) {
+                showToast('Les mots de passe ne correspondent pas');
+                return;
+            }
+            
+            masterKey = password;
+            isLocked = false;
+            localStorage.setItem('passwordSafeMaster', 'true');
+            saveDatabase();
+            
+            document.getElementById('newMasterPassword').value = '';
+            document.getElementById('confirmMasterPassword').value = '';
+            
+            document.getElementById('loginScreen').classList.remove('active');
+            document.getElementById('mainScreen').classList.add('active');
+            
+            loadCategories();
+            showToast('🎉 Coffre-fort créé avec succès !');
+            
+            setTimeout(() => {
+                showToast('💡 Astuce : Cliquez sur le bouton + pour ajouter votre première entrée');
+            }, 3000);
+        }
+
+        function login() {
+            const password = document.getElementById('masterPassword').value;
+            if (!password) {
+                showToast('Veuillez entrer un mot de passe');
+                return;
+            }
+            
+            masterKey = password;
+            isLocked = false;
+            
+            document.getElementById('loginScreen').classList.remove('active');
+            document.getElementById('mainScreen').classList.add('active');
+            
+            document.getElementById('masterPassword').value = '';
+            loadCategories();
+            showToast('Connexion réussie');
+        }
+
+        function loadDatabase() {
+            const stored = localStorage.getItem('passwordSafeDB');
+            if (stored) {
+                try {
+                    database = JSON.parse(stored);
+                } catch(e) {
+                    console.error('Error loading database:', e);
+                }
+            }
+        }
+
+        function saveDatabase() {
+            localStorage.setItem('passwordSafeDB', JSON.stringify(database));
+            localStorage.setItem('passwordSafeMaster', 'true');
+        }
+
+        function loadCategories() {
+            const grid = document.getElementById('categoriesGrid');
+            grid.innerHTML = '';
+            
+            const allCard = createCategoryCard('Toutes les catégories', database.entries.length, '#607d8b');
+            allCard.onclick = () => showAllEntries();
+            grid.appendChild(allCard);
+            
+            const uncategorized = database.entries.filter(e => !e.category).length;
+            if (uncategorized > 0) {
+                const noCard = createCategoryCard('Sans catégorie', uncategorized, '#444');
+                noCard.onclick = () => showUncategorized();
+                grid.appendChild(noCard);
+            }
+            
+            for (const [name, category] of Object.entries(database.categories)) {
+                const count = database.entries.filter(e => e.category === name).length;
+                const card = createCategoryCard(name, count, category.color);
+                card.onclick = () => showCategory(name);
+                grid.appendChild(card);
+            }
+        }
+
+        function createCategoryCard(name, count, color) {
+            const card = document.createElement('div');
+            card.className = 'category-card';
+            card.style.background = color;
+            card.innerHTML = `
+                <div class="category-name">${name.charAt(0).toUpperCase() + name.slice(1)}</div>
+                <div class="category-count">${count} entrée${count !== 1 ? 's' : ''}</div>
+            `;
+            return card;
+        }
+
+        function showCategory(categoryName) {
+            currentCategory = categoryName;
+            document.getElementById('categoryTitle').textContent = categoryName.charAt(0).toUpperCase() + categoryName.slice(1);
+            const entries = database.entries.filter(e => e.category === categoryName);
+            displayEntries(entries);
+            document.getElementById('mainScreen').classList.remove('active');
+            document.getElementById('categoryView').classList.add('active');
+        }
+
+        function showAllEntries() {
+            currentCategory = null;
+            document.getElementById('categoryTitle').textContent = 'Toutes les entrées';
+            displayEntries(database.entries);
+            document.getElementById('mainScreen').classList.remove('active');
+            document.getElementById('categoryView').classList.add('active');
+        }
+
+        function showUncategorized() {
+            currentCategory = '';
+            document.getElementById('categoryTitle').textContent = 'Sans catégorie';
+            displayEntries(database.entries.filter(e => !e.category));
+            document.getElementById('mainScreen').classList.remove('active');
+            document.getElementById('categoryView').classList.add('active');
+        }
+
+        function displayEntries(entries) {
+            const list = document.getElementById('entriesList');
+            list.innerHTML = '';
+            
+            entries.sort((a, b) => a.title.localeCompare(b.title));
+            
+            const grouped = {};
+            entries.forEach(entry => {
+                const firstLetter = entry.title[0].toUpperCase();
+                if (!grouped[firstLetter]) grouped[firstLetter] = [];
+                grouped[firstLetter].push(entry);
+            });
+            
+            Object.keys(grouped).sort().forEach(letter => {
+                const letterHeader = document.createElement('div');
+                letterHeader.style.color = '#666';
+                letterHeader.style.fontSize = '14px';
+                letterHeader.style.marginTop = '20px';
+                letterHeader.style.marginBottom = '10px';
+                letterHeader.textContent = letter;
+                list.appendChild(letterHeader);
+                
+                grouped[letter].forEach(entry => {
+                    const item = document.createElement('div');
+                    item.className = 'entry-item';
+                    const icon = entry.icon || database.categories[entry.category]?.icon || '🔒';
+                    const username = entry.fields?.find(f => f.type === 'username')?.value || '';
+                    
+                    item.innerHTML = `
+                        <div class="entry-icon" style="background: ${database.categories[entry.category]?.color || '#333'}">
+                            ${icon}
+                        </div>
+                        <div class="entry-info">
+                            <div class="entry-title">${entry.title}</div>
+                            <div class="entry-username">${username}</div>
+                        </div>
+                        <div class="entry-actions">
+                            <span>›</span>
+                        </div>
+                    `;
+                    item.onclick = () => showEntryDetail(entry);
+                    list.appendChild(item);
+                });
+            });
+        }
+
+        function showEntryDetail(entry) {
+            currentEntry = entry;
+            document.getElementById('entryTitle').textContent = entry.title;
+            
+            const icon = entry.icon || database.categories[entry.category]?.icon || '🔒';
+            const color = database.categories[entry.category]?.color || '#333';
+            document.getElementById('entryIcon').innerHTML = icon;
+            document.getElementById('entryIcon').style.background = color;
+            
+            const fieldsContainer = document.getElementById('detailFields');
+            fieldsContainer.innerHTML = '';
+            
+            if (entry.category) {
+                fieldsContainer.innerHTML += `
+                    <div class="section-title">CATÉGORIE</div>
+                    <div class="field-item">
+                        <div class="field-info">
+                            <div class="field-value">${entry.category}</div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            if (entry.fields && entry.fields.length > 0) {
+                fieldsContainer.innerHTML += '<div class="section-title">DONNÉES</div>';
+                
+                entry.fields.forEach(field => {
+                    const isPassword = field.type === 'password';
+                    const fieldId = 'field_' + Math.random().toString(36).substr(2, 9);
+                    
+                    fieldsContainer.innerHTML += `
+                        <div class="field-item">
+                            <div class="field-info">
+                                <div class="field-label">${getFieldLabel(field.type, field.label)}</div>
+                                <div class="field-value">
+                                    ${isPassword ? 
+                                        `<input type="password" id="${fieldId}" value="${decrypt(field.value)}" readonly style="background: none; border: none; color: #fff; padding: 0;">` : 
+                                        field.value}
+                                </div>
+                            </div>
+                            <div class="field-actions">
+                                ${isPassword ? `<button class="action-btn" onclick="togglePassword('${fieldId}')">👁</button>` : ''}
+                                <button class="action-btn" onclick="copyFieldValue('${isPassword ? decrypt(field.value) : field.value}')">📋</button>
+                            </div>
+                        </div>
+                    `;
+                });
+            }
+            
+            document.getElementById('categoryView').classList.remove('active');
+            document.getElementById('entryDetail').classList.add('active');
+        }
+
+        function getFieldLabel(type, customLabel) {
+            if (customLabel) return customLabel;
+            const labels = {
+                'username': "Nom d'utilisateur",
+                'password': 'Mot de passe',
+                'email': 'Email',
+                'url': 'Site web',
+                'phone': 'Téléphone',
+                'address': 'Adresse',
+                'note': 'Note'
+            };
+            return labels[type] || 'Champ personnalisé';
+        }
+
+        function backToMain() {
+            document.getElementById('categoryView').classList.remove('active');
+            document.getElementById('mainScreen').classList.add('active');
+        }
+
+        function backToCategory() {
+            document.getElementById('entryDetail').classList.remove('active');
+            if (currentCategory !== null) {
+                if (currentCategory === '') {
+                    showUncategorized();
+                } else {
+                    showCategory(currentCategory);
+                }
+            } else {
+                showAllEntries();
+            }
+        }
+
+        function openAddModal() {
+            editMode = false;
+            document.getElementById('modalTitle').textContent = 'Nouvelle entrée';
+            clearModalFields();
+            customFieldsTemp = [
+                { type: 'username', value: '', label: '' },
+                { type: 'password', value: '', label: '' }
+            ];
+            updateFieldsDisplay();
+            document.getElementById('addModal').classList.add('active');
+        }
+
+        function editEntry() {
+            editMode = true;
+            document.getElementById('modalTitle').textContent = "Modifier l'entrée";
+            document.getElementById('newTitle').value = currentEntry.title;
+            selectedIconTemp = currentEntry.icon || database.categories[currentEntry.category]?.icon || '🔒';
+            document.getElementById('selectedIcon').textContent = selectedIconTemp;
+            
+            selectedCategoryTemp = currentEntry.category;
+            if (selectedCategoryTemp) {
+                document.getElementById('selectedCategoryDisplay').style.display = 'block';
+                document.getElementById('selectedCategoryName').textContent = selectedCategoryTemp;
+                document.getElementById('selectedCategoryColor').style.background = database.categories[selectedCategoryTemp]?.color || '#607d8b';
+                document.getElementById('selectedCategoryText').style.display = 'none';
+            }
+            
+            customFieldsTemp = currentEntry.fields ? [...currentEntry.fields] : [];
+            updateFieldsDisplay();
+            document.getElementById('addModal').classList.add('active');
+        }
+
+        function clearModalFields() {
+            document.getElementById('newTitle').value = '';
+            selectedIconTemp = '🔒';
+            document.getElementById('selectedIcon').textContent = '🔒';
+            selectedCategoryTemp = null;
+            document.getElementById('selectedCategoryDisplay').style.display = 'none';
+            document.getElementById('selectedCategoryText').style.display = 'block';
+            document.getElementById('selectedCategoryText').textContent = 'Ajouter une catégorie';
+            customFieldsTemp = [];
+        }
+
+        function closeModal() {
+            document.getElementById('addModal').classList.remove('active');
+            clearModalFields();
+        }
+
+        function saveEntry() {
+            const title = document.getElementById('newTitle').value;
+            
+            if (!title) {
+                showToast('Veuillez entrer un nom');
+                return;
+            }
+            
+            const validFields = customFieldsTemp.filter(f => f.value);
+            
+            if (validFields.length === 0) {
+                showToast('Veuillez ajouter au moins un champ');
+                return;
+            }
+            
+            const encryptedFields = validFields.map(f => ({
+                ...f,
+                value: f.type === 'password' ? encrypt(f.value) : f.value
+            }));
+            
+            const entry = {
+                id: editMode ? currentEntry.id : Date.now(),
+                title,
+                category: selectedCategoryTemp,
+                icon: selectedIconTemp,
+                fields: encryptedFields,
+                lastModified: new Date().toISOString()
+            };
+            
+            if (editMode) {
+                const index = database.entries.findIndex(e => e.id === currentEntry.id);
+                if (index !== -1) {
+                    database.entries[index] = entry;
+                }
+            } else {
+                database.entries.push(entry);
+            }
+            
+            saveDatabase();
+            closeModal();
+            loadCategories();
+            
+            if (editMode) {
+                showEntryDetail(entry);
+            }
+            
+            showToast(editMode ? 'Entrée modifiée' : 'Entrée ajoutée');
+        }
+
+        function deleteEntry() {
+            if (confirm('Êtes-vous sûr de vouloir supprimer cette entrée?')) {
+                database.entries = database.entries.filter(e => e.id !== currentEntry.id);
+                saveDatabase();
+                backToCategory();
+                loadCategories();
+                showToast('Entrée supprimée');
+            }
+        }
+
+        function updateFieldsDisplay() {
+            const container = document.getElementById('customFields');
+            container.innerHTML = '';
+            
+            customFieldsTemp.forEach((field, index) => {
+                const fieldId = 'field_edit_' + index;
+                const isPassword = field.type === 'password';
+                
+                container.innerHTML += `
+                    <div class="field-item" style="margin-bottom: 10px;">
+                        <div style="flex: 1;">
+                            <div class="field-label">${getFieldLabel(field.type, field.label)}</div>
+                            <input type="${isPassword ? 'password' : 'text'}" 
+                                   id="${fieldId}"
+                                   value="${isPassword && field.value ? decrypt(field.value) : field.value}"
+                                   placeholder="Entrer ${getFieldLabel(field.type, field.label).toLowerCase()}"
+                                   onchange="updateFieldValue(${index}, this.value)"
+                                   style="background: #1a1a1a; border: 1px solid #333; padding: 10px; border-radius: 8px; width: 100%; margin-top: 5px;">
+                        </div>
+                        <div class="field-actions">
+                            ${isPassword ? `<button class="action-btn" onclick="togglePassword('${fieldId}')">👁</button>` : ''}
+                            ${isPassword ? `<button class="action-btn" onclick="generatePasswordForField(${index})">🔄</button>` : ''}
+                            <button class="action-btn" onclick="removeField(${index})">🗑️</button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        function updateFieldValue(index, value) {
+            customFieldsTemp[index].value = value;
+        }
+
+        function removeField(index) {
+            customFieldsTemp.splice(index, 1);
+            updateFieldsDisplay();
+        }
+
+        function showAddFieldMenu() {
+            document.getElementById('fieldMenuModal').classList.add('active');
+        }
+
+        function closeFieldMenu() {
+            document.getElementById('fieldMenuModal').classList.remove('active');
+        }
+
+        function addField(type) {
+            if (type === 'custom') {
+                const label = prompt('Nom du champ personnalisé:');
+                if (label) {
+                    customFieldsTemp.push({ type: 'text', value: '', label });
+                }
+            } else {
+                customFieldsTemp.push({ type, value: '', label: '' });
+            }
+            updateFieldsDisplay();
+            closeFieldMenu();
+        }
+
+        function openIconPicker() {
+            const grid = document.getElementById('iconGrid');
+            grid.innerHTML = '';
+            
+            icons.forEach(icon => {
+                const option = document.createElement('div');
+                option.className = 'icon-option';
+                if (icon === selectedIconTemp) option.classList.add('selected');
+                option.textContent = icon;
+                option.onclick = () => {
+                    document.querySelectorAll('.icon-option').forEach(o => o.classList.remove('selected'));
+                    option.classList.add('selected');
+                    selectedIconTemp = icon;
+                };
+                grid.appendChild(option);
+            });
+            
+            document.getElementById('iconPickerModal').classList.add('active');
+        }
+
+        function closeIconPicker() {
+            document.getElementById('iconPickerModal').classList.remove('active');
+        }
+
+        function selectIcon() {
+            document.getElementById('selectedIcon').textContent = selectedIconTemp;
+            closeIconPicker();
+        }
+
+        function showCategorySelector() {
+            const list = document.getElementById('categoryList');
+            list.innerHTML = '';
+            
+            Object.entries(database.categories).forEach(([name, cat]) => {
+                const item = document.createElement('div');
+                item.className = 'category-selector';
+                item.style.marginBottom = '10px';
+                item.innerHTML = `
+                    <div class="category-color" style="background: ${cat.color}"></div>
+                    <div style="flex: 1;">${name.charAt(0).toUpperCase() + name.slice(1)}</div>
+                `;
+                item.onclick = () => {
+                    selectedCategoryTemp = name;
+                    document.getElementById('selectedCategoryDisplay').style.display = 'block';
+                    document.getElementById('selectedCategoryName').textContent = name;
+                    document.getElementById('selectedCategoryColor').style.background = cat.color;
+                    document.getElementById('selectedCategoryText').style.display = 'none';
+                    closeCategorySelector();
+                };
+                list.appendChild(item);
+            });
+            
+            document.getElementById('categorySelectorModal').classList.add('active');
+        }
+
+        function closeCategorySelector() {
+            document.getElementById('categorySelectorModal').classList.remove('active');
+        }
+
+        function removeCategory() {
+            selectedCategoryTemp = null;
+            document.getElementById('selectedCategoryDisplay').style.display = 'none';
+            document.getElementById('selectedCategoryText').style.display = 'block';
+            document.getElementById('selectedCategoryText').textContent = 'Ajouter une catégorie';
+        }
+
+        function createNewCategory() {
+            const name = prompt('Nom de la nouvelle catégorie:');
+            if (name && !database.categories[name.toLowerCase()]) {
+                const colors = ['#f44336', '#e91e63', '#9c27b0', '#673ab7', '#3f51b5', 
+                              '#2196f3', '#03a9f4', '#00bcd4', '#009688', '#4caf50'];
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                database.categories[name.toLowerCase()] = { color, icon: '📁' };
+                saveDatabase();
+                showCategorySelector();
+            }
+        }
+
+        function generatePassword() {
+            const length = 16;
+            const charset = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+-=[]{}|;:,.<>?';
+            let password = '';
+            for (let i = 0; i < length; i++) {
+                password += charset.charAt(Math.floor(Math.random() * charset.length));
+            }
+            return password;
+        }
+
+        function generatePasswordForField(index) {
+            const password = generatePassword();
+            customFieldsTemp[index].value = password;
+            updateFieldsDisplay();
+            showToast('Mot de passe généré');
+        }
+
+        function togglePassword(inputId) {
+            const input = document.getElementById(inputId);
+            if (input) {
+                input.type = input.type === 'password' ? 'text' : 'password';
+            }
+        }
+
+        function copyFieldValue(value) {
+            const textarea = document.createElement('textarea');
+            textarea.value = value;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            showToast('Copié dans le presse-papiers');
+        }
+
+        function searchEntries() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            if (!query) {
+                loadCategories();
+                return;
+            }
+            
+            const filtered = database.entries.filter(e => 
+                e.title.toLowerCase().includes(query) ||
+                e.category?.toLowerCase().includes(query) ||
+                e.fields?.some(f => f.value.toLowerCase().includes(query))
+            );
+            
+            displayFilteredCategories(filtered);
+        }
+
+        function searchCategoryEntries() {
+            const query = document.getElementById('categorySearchInput').value.toLowerCase();
+            let entries = currentCategory !== null ? 
+                (currentCategory === '' ? database.entries.filter(e => !e.category) :
+                 database.entries.filter(e => e.category === currentCategory)) :
+                database.entries;
+            
+            if (query) {
+                entries = entries.filter(e => 
+                    e.title.toLowerCase().includes(query) ||
+                    e.fields?.some(f => f.value.toLowerCase().includes(query))
+                );
+            }
+            
+            displayEntries(entries);
+        }
+
+        function displayFilteredCategories(entries) {
+            const grid = document.getElementById('categoriesGrid');
+            grid.innerHTML = '';
+            
+            const categories = {};
+            entries.forEach(entry => {
+                const cat = entry.category || 'Sans catégorie';
+                if (!categories[cat]) {
+                    categories[cat] = 0;
+                }
+                categories[cat]++;
+            });
+            
+            for (const [name, count] of Object.entries(categories)) {
+                const color = name === 'Sans catégorie' ? '#444' : database.categories[name]?.color || '#607d8b';
+                const card = createCategoryCard(name, count, color);
+                card.onclick = () => {
+                    currentCategory = name === 'Sans catégorie' ? '' : name;
+                    document.getElementById('categoryTitle').textContent = name.charAt(0).toUpperCase() + name.slice(1);
+                    displayEntries(entries.filter(e => {
+                        if (name === 'Sans catégorie') return !e.category;
+                        return e.category === name;
+                    }));
+                    document.getElementById('mainScreen').classList.remove('active');
+                    document.getElementById('categoryView').classList.add('active');
+                };
+                grid.appendChild(card);
+            }
+        }
+
+        function switchScreen(screenId, navItem) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+            document.getElementById(screenId).classList.add('active');
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            navItem.classList.add('active');
+            
+            if (screenId === 'mainScreen') {
+                loadCategories();
+            }
+        }
+
+        function toggleSetting(setting) {
+            const switchElement = document.getElementById(setting + 'Switch');
+            switchElement.classList.toggle('active');
+            database.settings[setting] = switchElement.classList.contains('active');
+            saveDatabase();
+            showToast('Paramètre modifié');
+        }
+
+        function exportData() {
+            const dataStr = JSON.stringify(database, null, 2);
+            const encrypted = CryptoJS.AES.encrypt(dataStr, masterKey).toString();
+            const blob = new Blob([encrypted], {type: 'text/plain'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'password_safe_backup_' + new Date().toISOString().split('T')[0] + '.pws';
+            a.click();
+            URL.revokeObjectURL(url);
+            showToast('Données exportées avec succès');
+        }
+
+        function importData() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.pws,.json';
+            input.onchange = e => {
+                const file = e.target.files[0];
+                const reader = new FileReader();
+                reader.onload = event => {
+                    try {
+                        const content = event.target.result;
+                        let data;
+                        
+                        try {
+                            const decrypted = CryptoJS.AES.decrypt(content, masterKey).toString(CryptoJS.enc.Utf8);
+                            data = JSON.parse(decrypted);
+                        } catch {
+                            data = JSON.parse(content);
+                        }
+                        
+                        if (data.entries) {
+                            database.entries = [...database.entries, ...data.entries];
+                        }
+                        if (data.categories) {
+                            database.categories = {...database.categories, ...data.categories};
+                        }
+                        
+                        saveDatabase();
+                        loadCategories();
+                        showToast('Données importées avec succès');
+                    } catch (err) {
+                        showToast('Erreur lors de l\'importation');
+                        console.error(err);
+                    }
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        }
+
+        function changePassword() {
+            const newPassword = prompt('Entrez le nouveau mot de passe principal:');
+            if (newPassword && newPassword.length >= 6) {
+                const confirmPassword = prompt('Confirmez le nouveau mot de passe:');
+                if (confirmPassword === newPassword) {
+                    database.entries.forEach(entry => {
+                        if (entry.fields) {
+                            entry.fields.forEach(field => {
+                                if (field.type === 'password' && field.value) {
+                                    const decrypted = decrypt(field.value);
+                                    const oldKey = masterKey;
+                                    masterKey = newPassword;
+                                    field.value = encrypt(decrypted);
+                                    masterKey = oldKey;
+                                }
+                            });
+                        }
+                    });
+                    
+                    masterKey = newPassword;
+                    saveDatabase();
+                    showToast('Mot de passe modifié avec succès');
+                } else {
+                    showToast('Les mots de passe ne correspondent pas');
+                }
+            } else if (newPassword) {
+                showToast('Le mot de passe doit contenir au moins 6 caractères');
+            }
+        }
+
+        function encrypt(text) {
+            if (!text) return '';
+            return CryptoJS.AES.encrypt(text, masterKey).toString();
+        }
+
+        function decrypt(encryptedText) {
+            if (!encryptedText) return '';
+            try {
+                return CryptoJS.AES.decrypt(encryptedText, masterKey).toString(CryptoJS.enc.Utf8);
+            } catch {
+                return encryptedText;
+            }
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        // Initialize app when DOM is ready
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html><!DOCTYPE html>
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
@@ -861,7 +1695,7 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <script>
-        // Data storage
+        // Global variables
         let masterKey = '';
         let isLocked = true;
         let database = {
@@ -870,5 +1704,4 @@
                 'app store': { color: '#ffeb3b', icon: '📱' },
                 'assurance': { color: '#607d8b', icon: '🛡️' },
                 'banque': { color: '#f44336', icon: '🏦' },
-                'email': { color: '#9c27b0', icon: '📧' },
-                '
+                'email': { color: '#
